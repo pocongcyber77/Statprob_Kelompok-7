@@ -1,0 +1,144 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+
+# Membaca data dari file Excel
+data = pd.read_excel('Dataset.xlsx')
+
+# Menampilkan informasi dasar tentang dataset
+data.info()
+
+# Menghitung statistik dasar untuk setiap kolom
+hasil = {}
+
+for kolom in data.columns:
+    if kolom != 'tanggal':
+        mean = data[kolom].mean()
+        median = data[kolom].median()
+        mode = data[kolom].mode()[0]
+        q1 = data[kolom].quantile(0.25)
+        q3 = data[kolom].quantile(0.75)
+        
+        hasil[kolom] = {
+            'mean': mean,
+            'median': median,
+            'mode': mode,
+            'Q1': q1,
+            'Q3': q3
+        }
+
+df_hasil = pd.DataFrame(hasil)
+df_transpose_hasil = df_hasil.T
+
+# Fungsi untuk membuat tabel distribusi frekuensi
+def frequency_distribution(kolom, bins):
+    freq_table = pd.cut(kolom, bins=bins, right=True).value_counts().sort_index()
+    return freq_table
+
+# Membuat histogram dan poligon frekuensi untuk setiap kolom
+plt.figure(figsize=(15, 12))
+
+bins_hujan = [0, 5, 10, 15, 20, 25]
+bins_penjualan = [0, 50, 100, 150, 200, 250, 300]
+
+for i, kolom in enumerate(data.columns[1:], start=1):
+    if 'hujan' in kolom:
+        frekuensi = frequency_distribution(data[kolom], bins_hujan)
+        bins = bins_hujan
+    else:
+        frekuensi = frequency_distribution(data[kolom], bins_penjualan)
+        bins = bins_penjualan
+
+    # Membuat histogram
+    plt.subplot(3, 2, i)
+    plt.hist(data[kolom], bins=bins, edgecolor='black', alpha=1)
+    plt.axvline(data[kolom].median(), color='red', linestyle='dashed', linewidth=1)
+    plt.title(f'Tabel Frekuensi Histogram {kolom}')
+    plt.xlabel(kolom)
+    plt.ylabel('Frekuensi')
+    plt.xticks(bins)
+
+    # Membuat poligon frekuensi
+    plt.subplot(3, 2, i + 3)
+    mid_bins = [(bins[j] + bins[j + 1]) / 2 for j in range(len(bins) - 1)]
+    plt.plot(mid_bins, frekuensi.values, marker='o', linestyle='-', color='blue')
+    plt.title(f'Tabel Frekuensi Poligon {kolom}')
+    plt.xlabel(kolom)
+    plt.ylabel('Frekuensi')
+    plt.xticks(bins)
+
+plt.tight_layout()
+plt.show()
+
+# Menghitung ukuran sebaran untuk setiap kolom
+spread_hasil = {}
+
+for kolom in data.columns[1:]:
+    data_range = data[kolom].max() - data[kolom].min()
+    q1 = data[kolom].quantile(0.25)
+    q3 = data[kolom].quantile(0.75)
+    iqr = q3 - q1
+    skewness = data[kolom].skew()
+    kurt = stats.kurtosis(data[kolom])
+    variance = data[kolom].var()
+    std_dev = data[kolom].std()
+
+    spread_hasil[kolom] = {
+        'range': data_range,
+        'IQR': iqr,
+        'variansi': variance,
+        'Standar Deviasi': std_dev,
+        'Skewness': skewness,
+        'kurtosis': kurt
+    }
+
+df_spread_hasil = pd.DataFrame(spread_hasil).T
+
+# Menggabungkan hasil statistik dasar dengan ukuran sebaran
+df_combined = pd.concat([df_transpose_hasil, df_spread_hasil], axis=1)
+
+# Menghitung batas bawah dan batas atas untuk mendeteksi outlier
+lower_bounds = df_combined['Q1'] - 1.5 * df_combined['IQR']
+upper_bounds = df_combined['Q3'] + 1.5 * df_combined['IQR']
+
+# Mendeteksi outlier
+outliers = {
+    'curah hujan (mm)': data[(data['curah hujan (mm)'] < lower_bounds['curah hujan (mm)']) | (data['curah hujan (mm)'] > upper_bounds['curah hujan (mm)'])],
+    'penjualan A (pcs)': data[(data['penjualan A (pcs)'] < lower_bounds['penjualan A (pcs)']) | (data['penjualan A (pcs)'] > upper_bounds['penjualan A (pcs)'])],
+    'penjualan B (pcs)': data[(data['penjualan B (pcs)'] < lower_bounds['penjualan B (pcs)']) | (data['penjualan B (pcs)'] > upper_bounds['penjualan B (pcs)'])]
+}
+
+# Menampilkan jumlah outlier untuk setiap kolom
+for key, value in outliers.items():
+    print(f"\nJumlah Outliers untuk {key}: {value.shape[0]}")
+
+# Fungsi untuk menghapus outlier dari dataset
+def remove_outliers(df, kolom):
+    Q1 = df[kolom].quantile(0.25)
+    Q3 = df[kolom].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bounds = Q1 - 1.5 * IQR
+    upper_bounds = Q3 + 1.5 * IQR
+    return df[(df[kolom] >= lower_bounds) & (df[kolom] <= upper_bounds)]
+
+# Membuat perbandingan boxplot sebelum dan sesudah pembersihan outlier
+def create_comparison_boxplot(kolom):
+    plt.figure(figsize=(12, 6))
+    plot_data = pd.DataFrame({
+        'dataset': ['sebelum dibersihkan'] * len(data) + ['setelah dibersihkan'] * len(data_cleaned),
+        kolom: pd.concat([data[kolom], data_cleaned[kolom]])
+    })
+    sns.boxplot(x='dataset', y=kolom, data=plot_data)
+    plt.title(f'Boxplot Comparison untuk {kolom}')
+    plt.ylabel(kolom)
+    plt.show()
+
+# Menghapus outlier dari seluruh kolom
+data_cleaned = data.copy()
+for col in data_cleaned.columns:
+    data_cleaned = remove_outliers(data_cleaned, col)
+
+# Membuat boxplot untuk kolom 'curah hujan (mm)'
+create_comparison_boxplot('curah hujan (mm)')
